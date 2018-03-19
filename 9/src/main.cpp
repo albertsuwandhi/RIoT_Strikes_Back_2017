@@ -1,0 +1,179 @@
+#include <Arduino.h>
+#include "arduinoFFT.h" // https://github.com/kosme/arduinoFFT  
+
+arduinoFFT FFT = arduinoFFT(); /* Create FFT object */
+/*
+These values can be changed in order to evaluate the functions
+*/
+const uint16_t samples = 64; //This value MUST ALWAYS be a power of 2
+const double signalFrequency = 1000;
+const double samplingFrequency = 5000;
+const uint8_t amplitude = 100;
+double vReal[samples];
+double vImag[samples];
+long starttime,endtime,duration = 0;
+#define MSG_RESULT_SIZE 20
+uint32_t msg[MSG_RESULT_SIZE];
+
+bool task0done, task1done = false;
+bool starttask0, starttask1 =false;
+xQueueHandle result_queue;
+
+void do_fft() {
+  /* Build raw data */
+  double cycles = (((samples-1) * signalFrequency) / samplingFrequency); //Number of signal cycles that the sampling will read
+  for (uint16_t i = 0; i < samples; i++) {
+    vReal[i] = int8_t((amplitude * (sin((i * (twoPi * cycles)) / samples))) / 2.0);/* Build data with positive and negative values*/
+  }
+  FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  /* Weigh data */
+  FFT.Compute(vReal, vImag, samples, FFT_FORWARD); /* Compute FFT */
+  FFT.ComplexToMagnitude(vReal, vImag, samples); /* Compute magnitudes */
+  double x = FFT.MajorPeak(vReal, samples, samplingFrequency);
+}
+
+uint32_t float_sqrt(uint32_t count) {
+  uint32_t pos;
+  float t = 0;
+  uint32_t start_millis,stop_millis;
+  
+  Serial.print(String("float ")+String(count)+String(" sqrt: "));
+  start_millis=millis();
+  for (pos=0; pos<count; pos++) {
+    t = sqrt(pos);
+ }
+  stop_millis=millis();
+  Serial.println(String(t)+String(" ")+String(stop_millis-start_millis)+String(" ms"));
+  return stop_millis-start_millis;
+}
+
+uint32_t double_sqrt(uint32_t count) {
+  uint32_t pos;
+  double t = 0;
+  uint32_t start_millis,stop_millis;
+  
+  Serial.print(String("double ")+String(count)+String(" sqrt: "));
+  start_millis=millis();
+  for (pos=0; pos<count; pos++) {
+    t = sqrt(pos);
+ }
+  stop_millis=millis();
+  Serial.println(String(t)+String(" ")+String(stop_millis-start_millis)+String(" ms"));
+  return stop_millis-start_millis;
+}
+
+uint32_t double_pow(uint32_t count) {
+  uint32_t pos;
+  double t = 0;
+  uint32_t start_millis,stop_millis;
+  
+  Serial.print(String("double ")+String(count)+String(" pow: "));
+  start_millis=millis();
+  for (pos=0; pos<count; pos++) {
+    t = pow(pos,2);
+ }
+  stop_millis=millis();
+  Serial.println(String(t)+String(" ")+String(stop_millis-start_millis)+String(" ms"));
+  return stop_millis-start_millis;
+}
+
+uint32_t double_fft(uint32_t count) {
+  uint32_t pos;
+  uint32_t start_millis,stop_millis;
+  
+  Serial.print(String("double ")+String(count)+String(" fft: "));
+  start_millis=millis();
+  for (pos=0; pos<count; pos++) {
+    do_fft();
+  }
+  stop_millis=millis();
+  Serial.println(String(" ")+String(stop_millis-start_millis)+String(" ms"));
+  return stop_millis-start_millis;
+}
+
+void myCore1Task(void *pvParameters) {
+//int taskno = (int)pvParameters;
+//Serial.println(String("start Task on core ")+String(xPortGetCoreID()));
+
+while (1) {
+    //if (starttask0=true){
+    //vTaskDelay(10);
+    Serial.println(String("Start Task on core ")+String(xPortGetCoreID()));
+    uint32_t total_millis1=0;
+    total_millis1 += float_sqrt(125000);
+    total_millis1 += double_sqrt(50000);
+    total_millis1 += double_pow(50000);
+    Serial.println(total_millis1);
+    while(1);
+    msg[1] = total_millis1;
+    xQueueSendToBack(result_queue,&msg,portMAX_DELAY);
+    task1done=true;
+    //delay(10);
+    while(1);
+  //}
+}
+}
+
+void myCore0Task(void *pvParameters) {
+  while (1) {
+    //if (starttask1=true){
+    vTaskDelay(10);
+    Serial.println(String("Start Task on core ")+String(xPortGetCoreID()));
+    uint32_t total_millis0=0;
+    total_millis0 += double_fft(1000);
+    msg[0] = total_millis0;
+    xQueueSendToBack(result_queue,&msg,portMAX_DELAY);
+    task0done=true;
+    delay(10);
+    while(1);
+  //}
+}
+}
+
+void myResultTask(void *pvParameters) {
+    Serial.println(String("Start result Task on core ")+String(xPortGetCoreID()));
+    while (1) {
+      if(xQueueReceive(result_queue,&msg,portMAX_DELAY)==pdTRUE && task0done==true && task1done==true) { 
+      //if(task1done==true && task1done==true) {
+        task0done,task1done = false;  
+        endtime=millis();
+        duration=endtime-starttime;
+        Serial.println(String("Task 0 Time : ")+String(msg[0]));
+        Serial.println(String("Task 1 Time : ")+String(msg[1]));
+        Serial.println(String("ESP32 Total Time - Dual Cores : ")+String(duration)+String(" ms\n"));
+}
+}
+}
+
+
+void LoadTest() {
+  uint32_t total_millis=0;
+  total_millis += float_sqrt(125000);
+  total_millis += double_sqrt(50000);
+  total_millis += double_pow(50000);
+  total_millis += double_fft(1000);
+  Serial.println(String("ESP32 Total Time - Single Core : ")+String((double)total_millis)+String(" ms\n"));
+}
+
+
+void setup(){
+    Serial.begin(115200);
+    //delay(100);
+    Serial.println("-----Start Processing on Single Core-----");
+    LoadTest();
+    Serial.println("-----Start Processing on Two Cores-----");
+    result_queue = xQueueCreate(10, sizeof(uint32_t)*MSG_RESULT_SIZE);
+    xTaskCreatePinnedToCore(myCore0Task, "myCore0Task", 1024, 0, 1, NULL, 0); // run on core 0 - FFT
+    xTaskCreatePinnedToCore(myCore1Task, "myCore1Task", 1024, 0, 1, NULL, 1); // run on core 1 - MATH
+    xTaskCreatePinnedToCore(myResultTask, "myResultTask", 1024, 0, 1, NULL, 1); // run on core 1 - COMBINE RESULT
+    starttime=millis();
+    bool starttask0,starttask1 =true;
+    while(1);
+
+}
+
+
+void loop() {
+  delay(100);
+  //while(1);
+
+}

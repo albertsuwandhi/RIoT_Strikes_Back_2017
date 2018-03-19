@@ -1,0 +1,97 @@
+#include <Arduino.h>
+
+long loops1 = 1000;
+long loops2 = 1000;
+long qq;
+float t1;
+int t2, t3;
+
+//TaskHandle_t Task1, Task2;
+SemaphoreHandle_t mutex;
+
+void LoadTest () {
+  for ( long i = 0; i < loops1; i++) {
+    for (long  j = 1; j < loops2; j++) {
+      qq++;
+      t1 = 18000.25 * i;
+      t2 = 150 * 1234 * i;
+      t3 = j % 250 ;
+    }
+  }
+}
+
+
+void Task1( void * parameter )
+{
+  for (;;) {
+    long start = millis();
+
+    LoadTest();
+
+    Serial.print("Finish Task 1 which runs on Core ");
+    Serial.print( xPortGetCoreID());
+    Serial.print(" Time ");
+    Serial.print(millis() - start);
+    Serial.println(" ms");
+    delay(10);
+  }
+}
+
+void Task2( void * parameter )
+{
+  for (;;) {
+    /*
+    long start = millis();
+
+    LoadTest();
+
+    Serial.print("Finish Task 2 which runs on Core ");
+    Serial.print( xPortGetCoreID());
+    Serial.print(" Time ");
+    Serial.print(millis() - start);
+    Serial.println(" ms");
+    delay(10);
+    */
+  }
+}
+
+// the setup function runs once when you press reset or power the board
+void setup() {
+  Serial.begin(115200);
+
+  mutex = xSemaphoreCreateMutex();
+
+  xTaskCreatePinnedToCore(
+    Task1,
+    "Task1",
+    1000,
+    NULL,
+    1,
+    0,
+    1);
+
+  delay(500);  // needed to start-up task1
+
+  xTaskCreatePinnedToCore(
+    Task2,
+    "Task2",
+    1000,
+    NULL,
+    1,
+    0,
+    0);
+}
+
+
+void loop() {
+  /*
+  long start = millis();
+  LoadTest();
+  Serial.print("Finish Loop Task which runs on Core ");
+  Serial.print( xPortGetCoreID());
+  Serial.print(" Time : ");
+  Serial.print(millis() - start);
+  Serial.println(" ms");
+  */ 
+  delay(10);
+}
